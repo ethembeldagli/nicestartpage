@@ -927,8 +927,8 @@
         <div class="sec-head"><span class="sec-num">04</span><span class="sec-title">engines</span><span class="sec-line"></span></div>
         <div id="engList"></div>
         <div class="eng-add">
-          <input class="fx fx-name" id="fxName" placeholder="name" maxlength="16" autocomplete="off" aria-label="Engine name">
-          <input class="fx fx-url" id="fxUrl" placeholder="https://site.com/search?q=%s" autocomplete="off" spellcheck="false" aria-label="Engine URL template">
+          <input class="fx fx-name" id="fxName" placeholder="name (optional)" maxlength="16" autocomplete="off" aria-label="Engine name">
+          <input class="fx fx-url" id="fxUrl" placeholder="https://search.brave.com/search?q" autocomplete="off" spellcheck="false" aria-label="Engine URL template">
           <button class="fx-add" id="fxAdd" type="button">add engine</button>
         </div>
         <div class="form-msg" id="fxMsg" aria-live="polite"></div>
@@ -1345,8 +1345,8 @@ function loadSettings(){
     if(Array.isArray(stored.engines)){
       const names = DEFAULTS.engines.map(e => e.n);
       const customs = stored.engines
-        .filter(e => e && typeof e.n === 'string' && typeof e.u === 'string' && e.u.includes('%s') && !names.includes(e.n))
-        .slice(0, 12).map(e => ({ n:e.n.slice(0,16), u:e.u, en:e.en !== false, custom:true }));
+        .filter(e => e && typeof e.n === 'string' && typeof e.u === 'string' && engineTemplate(e.u) && !names.includes(e.n))
+        .slice(0, 12).map(e => ({ n:e.n.slice(0,16), u:engineTemplate(e.u), en:e.en !== false, custom:true }));
       const builtins = DEFAULTS.engines.map(d => {
         const m = stored.engines.find(x => x && x.n === d.n);
         return m ? { ...d, en:m.en !== false } : { ...d };
@@ -1439,17 +1439,39 @@ function toggleEngine(name, on){
   } else e.en = true;
   save(); applyEngines(); buildEngines();
 }
-function addEngine(){
-  const n = fxName.value.trim().toLowerCase().replace(/\s+/g, '-');
-  let u = fxUrl.value.trim();
-  if(!n){ showMsg(fxMsg, 'give it a name', true); return; }
-  if(S.engines.some(e => e.n === n)){ showMsg(fxMsg, 'that name is taken', true); return; }
-  if(!u.includes('%s')){ showMsg(fxMsg, 'the url needs a %s where the query goes', true); return; }
+/* accepts any reasonable search address and turns it into a template with %s where the query goes:
+   .../search?q   .../search?q=   .../search?q=%s   search.brave.com   site.com/find */
+function engineTemplate(raw){
+  let u = String(raw || '').trim();
+  if(!u) return null;
   if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  let url;
+  try{ url = new URL(u.replace(/%s/g, 'QUERY')); }catch(e){ return null; }
+  if(!/\.[a-z]{2,}$/i.test(url.hostname) && url.hostname !== 'localhost') return null;
+  if(u.includes('%s')) return u;
+  if(/[?&][^=&#?]+=$/.test(u)) return u + '%s';                 // ...?q=
+  if(/[?&][^=&#?]+$/.test(u)) return u + '=%s';                 // ...?q
+  if(/[?&]$/.test(u)) return u + 'q=%s';                        // ...?
+  if(!url.search) return url.pathname === '/' ? url.origin + '/search?q=%s' : u + '?q=%s';
+  return u + '&q=%s';
+}
+function engineNameFrom(u){
+  try{
+    const parts = new URL(u.replace(/%s/g, 'q')).hostname.replace(/^www\./, '').split('.');
+    return (parts.length > 2 ? parts[parts.length - 2] : parts[0]).toLowerCase();
+  }catch(e){ return ''; }
+}
+function addEngine(){
+  const u = engineTemplate(fxUrl.value);
+  if(!fxUrl.value.trim()){ showMsg(fxMsg, 'paste the search address, like https://search.brave.com/search?q', true); return; }
+  if(!u){ showMsg(fxMsg, 'that does not look like a web address', true); return; }
+  const n = (fxName.value.trim() || engineNameFrom(u)).toLowerCase().replace(/\s+/g, '-').slice(0, 16);
+  if(!n){ showMsg(fxMsg, 'give it a name', true); return; }
+  if(S.engines.some(e => e.n === n)){ showMsg(fxMsg, '\u201c' + n + '\u201d is taken \u2014 pick another name', true); return; }
   S.engines.push({ n, u, en:true, custom:true });
   save(); applyEngines(); buildEngines(true);
   fxName.value = ''; fxUrl.value = '';
-  showMsg(fxMsg, '\u201c' + n + '\u201d added \u2014 click its square to make it active');
+  showMsg(fxMsg, '\u201c' + n + '\u201d added \u2014 click its square to make it active, or press tab on the line');
 }
 function delEngine(name, rowEl){
   const e = S.engines.find(x => x.n === name); if(!e || !e.custom) return;
