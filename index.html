@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>start</title>
 <meta name="theme-color" content="#F1EDE3">
 <meta name="theme-color" content="#100E0B" media="(prefers-color-scheme: dark)">
@@ -34,7 +34,7 @@
   button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible{ outline:1px solid var(--accent); outline-offset:3px; }
 
   /* ---------- layered atmosphere ---------- */
-  #sky{ position:fixed; inset:0; width:100vw; height:100vh; z-index:1; pointer-events:none; }
+  #sky{ position:fixed; inset:0; width:100%; height:100%; z-index:1; pointer-events:none; }
   #wave{ position:fixed; left:0; width:100vw; height:60px; z-index:1; pointer-events:none; }
   .stage{ position:fixed; inset:0; z-index:2; display:grid; place-items:center; }
   .vignette{
@@ -42,7 +42,7 @@
     background:radial-gradient(130% 100% at 50% 42%, transparent 58%,
       color-mix(in srgb, var(--ink) 6%, transparent) 100%);
   }
-  #grain{ position:fixed; inset:0; width:100vw; height:100vh; z-index:7; pointer-events:none; opacity:.55; }
+  #grain{ position:fixed; inset:0; width:100%; height:100%; z-index:7; pointer-events:none; opacity:.55; }
   .veil{ position:fixed; inset:0; z-index:9; background:var(--paper); opacity:0; pointer-events:none; transition:opacity .55s ease; }
   body.leaving .veil{ opacity:1; }
 
@@ -759,6 +759,12 @@
     .picker{ margin-left:0; }
   }
   @media (max-height:640px){ .quote{ display:none !important; } }
+  @media (max-height:460px){ .foot, .ticker{ display:none !important; } }
+  @media (pointer:coarse){
+    .fx, .nt, .panel input, .sheet input{ font-size:16px; }
+    .lens input{ width:46px; }
+    .pk-hex{ width:110px; }
+  }
   @media (prefers-reduced-motion: reduce){
     .display .ch, .display[data-anim] .ch, .display .ch.rw-in, .display .ch.rd-in, .display .ch.snip,
     .ph span, .ghost, .ghost.sink, .ghost.rw, .ghost.rd, .display.rewinding, .display.forwarding, .tk-run{ animation:none !important; }
@@ -1102,6 +1108,7 @@ const display = bar.querySelector('.display');
 const ph = bar.querySelector('.ph');
 const tail = $('tail'), input = $('q'), caret = bar.querySelector('.caret'), sel = $('sel');
 const hints = document.querySelector('.hints');
+const stageEl = document.querySelector('.stage');
 const wave = $('wave'), sky = $('sky'), grain = $('grain');
 const head = $('head'), mast = $('mast'), zonesEl = $('zones');
 const linksEl = $('links'), topsEl = $('tops'), recent = $('recent');
@@ -1276,7 +1283,7 @@ const hostOf = u => { try{ return new URL(u).hostname.replace(/^www\./, ''); }ca
 /* ================= state ================= */
 let vw = 0, vh = 0, dpr = 1, skyDpr = 1;
 let fsBase = 76, fsCur = 76;
-let baselineLocal = 0, lineYV = 0;
+let baselineLocal = 0, lineYV = 0, stageX = 0, stageY = 0;
 let barRect = null;
 let focused = false, busy = false, rafOn = false;
 let settingsOpen = false, widgetsDirty = false;
@@ -1700,10 +1707,12 @@ function startGrain(){
 /* ================= layout ================= */
 function applyFs(){
   bar.style.setProperty('--fs', fsCur.toFixed(2) + 'px');
+  const st = stageEl.getBoundingClientRect();
+  stageX = st.left; stageY = st.top;
   barRect = bar.getBoundingClientRect();
   const bl = probe.getBoundingClientRect().top;
   baselineLocal = bl - barRect.top;
-  lineYV = bl + fsCur * .16;
+  lineYV = bl - stageY + fsCur * .16;
   wave.style.top = Math.round(lineYV - 30) + 'px';
   wave.width = Math.round(vw * dpr); wave.height = Math.round(60 * dpr);
   wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1716,7 +1725,8 @@ function applyFs(){
   lidsEl.style.setProperty('--lb', Math.max(0, Math.round(vh - lineYV)) + 'px');
 }
 function layout(){
-  vw = innerWidth; vh = innerHeight; dpr = Math.min(2, devicePixelRatio || 1); skyDpr = Math.min(1.5, dpr);
+  vw = stageEl.clientWidth || innerWidth; vh = stageEl.clientHeight || innerHeight;
+  dpr = Math.min(2, devicePixelRatio || 1); skyDpr = Math.min(1.5, dpr);
   fsBase = Math.max(34, Math.min(76, vw * .064));
   fsCur = fsBase;
   applyFs();
@@ -1743,9 +1753,25 @@ function buildMap(){
     }
   }
 }
+/* where a letter actually sits, ignoring its entrance animation:
+   an animating letter is translated/scaled about its centre, so undo that from the measured box */
+function layoutRect(node){
+  const r = node.getBoundingClientRect();
+  let t = '';
+  try{ t = getComputedStyle(node).transform; }catch(e){}
+  if(!t || t === 'none') return r;
+  const m = t.match(/^matrix(3d)?\(([^)]+)\)$/);
+  if(!m) return r;
+  const v = m[2].split(',').map(parseFloat);
+  const sx = v[0], sy = m[1] ? v[5] : v[3], tx = m[1] ? v[12] : v[4], ty = m[1] ? v[13] : v[5];
+  if(!sx || !sy || !isFinite(sx) || !isFinite(sy)) return null;
+  const w = r.width / Math.abs(sx), h = r.height / Math.abs(sy);
+  const cx = r.left + r.width / 2 - tx, cy = r.top + r.height / 2 - ty;
+  return { left:cx - w / 2, right:cx + w / 2, top:cy - h / 2, bottom:cy + h / 2, width:w, height:h, x:cx - w / 2, y:cy - h / 2 };
+}
 function charRect(i){
   const m = map[i]; if(!m) return null;
-  if(m.t === 0){ const r = m.el.getBoundingClientRect(); return r.width ? r : null; }
+  if(m.t === 0){ const r = layoutRect(m.el); return r && r.width ? r : null; }
   try{
     range.setStart(m.node, m.u); range.setEnd(m.node, m.u + m.l);
     const r = range.getBoundingClientRect();
@@ -1777,7 +1803,7 @@ function updateCaret(){
   caret.style.left = x.toFixed(1) + 'px';
   caret.style.top = (baselineLocal - h).toFixed(1) + 'px';
   caret.style.height = h + 'px';
-  caretVX = barRect.left + x;
+  caretVX = barRect.left - stageX + x;
 }
 function drawSel(){
   if(!barRect) return;
@@ -1801,8 +1827,8 @@ function drawSel(){
       }catch(err){}
       i = j;
     }else{
-      const r = m.el.getBoundingClientRect();
-      selCtx.fillRect(r.left - barRect.left, r.top - barRect.top, r.width, r.height);
+      const r = layoutRect(m.el);
+      if(r) selCtx.fillRect(r.left - barRect.left, r.top - barRect.top, r.width, r.height);
       i++;
     }
   }
@@ -2990,9 +3016,11 @@ function closePanel(refocus){
   if(refocus) setTimeout(() => input.focus({ preventScroll:true }), 20);
 }
 function positionPanel(){
+  const st = stageEl.getBoundingClientRect(), H = st.height || innerHeight;
   const r = dockEl.classList.contains('on') && !S.zen ? dockEl.getBoundingClientRect() : null;
-  panelEl.style.bottom = (r && r.height ? Math.round(innerHeight - r.top + 12) : 24) + 'px';
-  panelEl.style.maxHeight = Math.max(240, Math.min(580, (r && r.height ? r.top : innerHeight) - 30)) + 'px';
+  const top = r && r.height ? r.top - st.top : H;
+  panelEl.style.bottom = (r && r.height ? Math.round(H - top + 12) : 24) + 'px';
+  panelEl.style.maxHeight = Math.max(200, Math.min(580, top - 30)) + 'px';
 }
 
 /* ---- shared ---- */
@@ -4235,6 +4263,36 @@ function bindEvents(){
   });
   addEventListener('focus', () => { if(titleAlert){ const m = titleAlert; setTimeout(() => { if(titleAlert === m){ titleAlert = null; liveTick(); } }, 4000); } });
 }
+let relayoutQ = false;
+function relayout(full){
+  if(relayoutQ) return;
+  relayoutQ = true;
+  requestAnimationFrame(() => {
+    relayoutQ = false;
+    if(!barRect || busy) return;
+    if(full) layout(); else applyFs();
+    buildMap(); drawSel(); updateCaret(); updateExtras();
+    if(panelId) positionPanel();
+  });
+}
+function watchLayout(){
+  if(window.visualViewport){
+    visualViewport.addEventListener('resize', () => relayout(true));
+    visualViewport.addEventListener('scroll', () => relayout(false));
+  }
+  if(window.ResizeObserver){
+    const ro = new ResizeObserver(() => relayout(false));
+    ro.observe(document.querySelector('.pile'));
+    new ResizeObserver(() => relayout(true)).observe(stageEl);
+  }
+  if(document.fonts){
+    if(document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => relayout(true));
+    if(document.fonts.ready) document.fonts.ready.then(() => relayout(true));
+  }
+  addEventListener('orientationchange', () => setTimeout(() => relayout(true), 250));
+  /* the keyboard sliding up moves things around: measure again once it has settled */
+  input.addEventListener('focus', () => { setTimeout(() => relayout(true), 120); setTimeout(() => relayout(true), 450); });
+}
 function buildDatalist(){
   const dl = $('zoneNames');
   const names = new Set(Object.keys(CITY).filter(k => k.length > 3 || k === 'utc'));
@@ -4277,7 +4335,7 @@ function init(){
   render(input.value, { animate:false });
   document.body.classList.add('ready');
   t0 = performance.now();
-  if(!rafOn){ rafOn = true; requestAnimationFrame(frame); }
+  if(!rafOn){ rafOn = true; requestAnimationFrame(frame); watchLayout(); }
   setTimeout(() => { if(!input.value){ ph.classList.remove('hidden'); showPhrase(0); } }, reduced ? 100 : 720);
 }
 
