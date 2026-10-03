@@ -136,7 +136,7 @@
   .bar{
     position:relative;
     width:min(900px, 86vw);
-    --fs:clamp(38px, 6.4vw, 76px);
+    --fs:20px;
     height:calc(var(--fs) * 1.4);
   }
   #sel{ position:absolute; inset:0; width:100%; height:100%; z-index:1; pointer-events:none; }
@@ -464,6 +464,11 @@
   .display.forwarding{ animation:fwdFx .44s cubic-bezier(.3,0,.2,1); }
   @keyframes rewFx{ 30%{ transform:translateX(.04em) skewX(9deg); filter:blur(.7px); } }
   @keyframes fwdFx{ 30%{ transform:translateX(-.04em) skewX(-9deg); filter:blur(.7px); } }
+
+  .measure{
+    position:absolute; left:0; top:0; visibility:hidden; pointer-events:none;
+    white-space:pre; font-family:var(--serif); font-size:var(--fs); letter-spacing:-.012em; line-height:1;
+  }
 
   /* ================= plot ================= */
   .plot{
@@ -1129,6 +1134,9 @@ const range = document.createRange();
 const probe = document.createElement('span');
 probe.className = 'probe'; probe.setAttribute('aria-hidden', 'true');
 display.appendChild(probe);
+const meas = document.createElement('span');
+meas.className = 'measure'; meas.setAttribute('aria-hidden', 'true');
+bar.appendChild(meas);
 
 /* ================= constants ================= */
 const ACCENTS = {
@@ -1282,7 +1290,8 @@ const hostOf = u => { try{ return new URL(u).hostname.replace(/^www\./, ''); }ca
 
 /* ================= state ================= */
 let vw = 0, vh = 0, dpr = 1, skyDpr = 1;
-let fsBase = 76, fsCur = 76;
+const BASE_FS = 20;                 /* the size the text always sits at; only very long text shrinks */
+let fsBase = BASE_FS, fsCur = BASE_FS;
 let baselineLocal = 0, lineYV = 0, stageX = 0, stageY = 0;
 let barRect = null;
 let focused = false, busy = false, rafOn = false;
@@ -1727,17 +1736,25 @@ function applyFs(){
 function layout(){
   vw = stageEl.clientWidth || innerWidth; vh = stageEl.clientHeight || innerHeight;
   dpr = Math.min(2, devicePixelRatio || 1); skyDpr = Math.min(1.5, dpr);
-  fsBase = Math.max(34, Math.min(76, vw * .064));
-  fsCur = fsBase;
-  applyFs();
+  fsBase = BASE_FS;
+  fit();
   sizeGrain();
   sky.width = Math.round(vw * skyDpr); sky.height = Math.round(vh * skyDpr);
   sctx.setTransform(skyDpr, 0, 0, skyDpr, 0, 0);
 }
 function fit(){
-  fsCur = fsBase; applyFs();
-  let guard = 0;
-  while(display.scrollWidth > display.clientWidth - 2 && guard++ < 60 && fsCur > 20){ fsCur *= .96; applyFs(); }
+  bar.style.setProperty('--fs', fsBase.toFixed(2) + 'px');
+  const txt = lastCP.join('');
+  let k = 1;
+  if(txt){
+    meas.style.fontStyle = display.classList.contains('recalled') ? 'italic' : 'normal';
+    meas.textContent = txt;
+    const w = meas.getBoundingClientRect().width;
+    const avail = bar.clientWidth - 6;
+    if(w > avail && w > 0) k = (avail / w) * .985;
+  }
+  fsCur = Math.max(13, fsBase * k);
+  applyFs();
 }
 
 /* ================= char map / caret / selection ================= */
