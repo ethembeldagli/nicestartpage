@@ -3,7 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>start</title>
+<title>meridian</title>
+<meta name="description" content="meridian — a calm, typographic browser start page drawn on a single line. Search, commands, widgets and ambient sound in one HTML file.">
+<meta property="og:title" content="meridian">
+<meta property="og:description" content="A calm, typographic start page drawn on a single line.">
+<meta property="og:image" content="https://meridian.ethembeldagli.dev/assets/dark.png">
 <meta name="theme-color" content="#F1EDE3">
 <meta name="theme-color" content="#100E0B" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23F1EDE3'/%3E%3Crect x='23' y='23' width='18' height='18' fill='%23E8490F'/%3E%3C/svg%3E">
@@ -131,6 +135,35 @@
     transition:opacity .25s ease, transform .25s ease;
   }
   .calc.on{ opacity:1; transform:translate(-50%, 0); }
+
+  /* ---------- ask: groq answers under the line ---------- */
+  .ai{
+    position:absolute; left:50%; transform:translate(-50%, 8px); z-index:8;
+    width:min(680px, 86vw); max-height:min(42vh, 420px); overflow:auto;
+    padding:18px 22px 16px; background:color-mix(in srgb, var(--paper) 94%, transparent);
+    border:1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    opacity:0; pointer-events:none; scrollbar-width:thin;
+    transition:opacity .3s ease, transform .3s ease;
+  }
+  .ai.on{ opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+  .ai-h{ display:flex; justify-content:space-between; gap:12px; margin-bottom:10px;
+    font-family:var(--mono); font-size:9px; letter-spacing:.18em; text-transform:lowercase;
+    color:color-mix(in srgb, var(--ink) 40%, transparent); }
+  .ai-h b{ font-weight:400; color:var(--accent); }
+  .ai-h button{ all:unset; cursor:pointer; } .ai-h button:hover{ color:var(--accent); }
+  .ai-q{ font-style:italic; font-size:15px; color:color-mix(in srgb, var(--ink) 55%, transparent); margin-bottom:8px; }
+  .ai-a{ font-size:18px; line-height:1.45; overflow-wrap:anywhere; }
+  .ai-a p+p, .ai-a p+ul, .ai-a ul+p, .ai-a pre{ margin-top:.6em; }
+  .ai-a ul, .ai-a ol{ padding-left:1.2em; }
+  .ai-a code{ font-family:var(--mono); font-size:.72em; padding:1px 4px; background:color-mix(in srgb, var(--ink) 7%, transparent); }
+  .ai-a pre{ font-family:var(--mono); font-size:12px; line-height:1.5; padding:10px 12px; overflow:auto;
+    background:color-mix(in srgb, var(--ink) 6%, transparent); white-space:pre; }
+  .ai-a pre code{ padding:0; background:none; font-size:inherit; }
+  .ai-a.wait::after{ content:''; display:inline-block; width:.5em; height:2px; margin-left:3px; vertical-align:.25em;
+    background:var(--accent); animation:aiBlink 1s steps(2) infinite; }
+  .ai-a.err{ font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--accent); }
+  @keyframes aiBlink{ 50%{ opacity:0; } }
 
   /* ---------- the bar ---------- */
   .bar{
@@ -809,6 +842,7 @@
   <div class="notice" id="notice" aria-live="polite"></div>
   <div class="palette" id="palette" aria-hidden="true"></div>
   <div class="calc" id="calc" aria-hidden="true"></div>
+  <div class="ai" id="ai" aria-live="polite"><div class="ai-h"><span><b>groq</b> &middot; <span id="aiModel"></span></span><span><button type="button" id="aiCopy">copy</button> &middot; <button type="button" id="aiClose">esc</button></span></div><div id="aiLog"></div></div>
   <div class="plot" id="plot" aria-hidden="true"><canvas id="plotC"></canvas><div class="plot-l" id="plotL"></div></div>
 
   <div class="hints" aria-hidden="true">
@@ -1084,6 +1118,20 @@
         </div></div>
       </section>
 
+      <section class="sec" style="--d:.54s">
+        <div class="sec-head"><span class="sec-num">10</span><span class="sec-title">ask</span><span class="sec-line"></span></div>
+        <div class="row-sub" style="margin:10px 0 2px">start the line with ? to ask groq. follow-ups remember the thread; esc forgets it</div>
+        <div class="row row-sub2">
+          <div class="row-tx"><div class="row-name">groq key</div><div class="row-sub">free at console.groq.com &middot; stays on this device</div></div>
+          <input class="fx tk-in" id="aiKey" type="password" placeholder="gsk_…" autocomplete="off" spellcheck="false" aria-label="Groq API key">
+        </div>
+        <div class="row row-sub2">
+          <div class="row-tx"><div class="row-name">model</div><div class="row-sub" id="aiModelSub">any model your key can use</div></div>
+          <input class="fx tk-in" id="aiModelIn" list="aiModels" autocomplete="off" spellcheck="false" aria-label="Groq model">
+          <datalist id="aiModels"></datalist>
+        </div>
+      </section>
+
       <footer class="sec sh-foot" style="--d:.6s">
         <button class="reset" id="resetBtn" type="button">reset everything</button>
         <span class="foot-note">everything stays on this device</span>
@@ -1174,7 +1222,8 @@ const DEFAULTS = {
   pomo:{ focus:25, short:5, long:15 },
   snips:[],
   zen:false,
-  blink:{ on:false, every:20 }
+  blink:{ on:false, every:20 },
+  ai:{ key:'', model:'llama-3.3-70b-versatile' }
 };
 const PHRASES = ['search or type a url', 'where to?', 'go on, type', 'type / for commands'];
 const QUOTES = [
@@ -1727,6 +1776,7 @@ function applyFs(){
   wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   hints.style.top = Math.round(lineYV - 9) + 'px';
   paletteEl.style.top = calcEl.style.top = plotEl.style.top = noticeEl.style.top = Math.round(lineYV + 22) + 'px';
+  $('ai').style.top = Math.round(lineYV + 30) + 'px';
   sel.width = Math.round(bar.clientWidth * dpr);
   sel.height = Math.round(bar.clientHeight * dpr);
   selCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2021,7 +2071,13 @@ function updateExtras(){
   /* live answer: plot, units, time zones, or arithmetic */
   calcRes = null; calcOn = false;
   let wantPlot = null;
-  if(v && !cmd){
+  const ask = v[0] === '?';
+  if(ask && v.slice(1).trim()){
+    calcEl.textContent = S.ai.key ? '\u21b5 ask groq' + (aiMsgs.length ? ' \u00b7 follow-up' : '') : 'add a groq key in settings';
+    calcEl.classList.add('on'); calcOn = true;
+  }
+  if(v && !ask && aiOn) aiHide();
+  if(v && !cmd && !ask){
     let out = null;
     const pf = plotFn(v);
     if(pf) wantPlot = pf;
@@ -2483,7 +2539,7 @@ function stepSky(t, dt){
   }
 }
 
-/* ================= the living hairline ================= */
+/* ================= the living meridian ================= */
 function RIP(x, a = 6, v = .34){
   if(reduced) a *= .3;
   ripples.push({ x, a, v, t:performance.now() });
@@ -3540,6 +3596,90 @@ function liveTick(){
   }
 }
 
+/* ================= ask: groq, streamed under the line ================= */
+let aiMsgs = [], aiOn = false, aiCtl = null, aiModelsDone = false;
+const AI_URL = 'https://api.groq.com/openai/v1/';
+function aiEsc(t){ return t.replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]); }
+function aiMd(src){
+  const blocks = src.split(/```/);
+  return blocks.map((b, i) => {
+    if(i % 2) return '<pre><code>' + aiEsc(b.replace(/^[\w-]*\n/, '')) + '</code></pre>';
+    return b.trim().split(/\n{2,}/).filter(Boolean).map(par => {
+      const inl = t => aiEsc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|\W)\*([^*\n]+)\*/g, '$1<i>$2</i>');
+      const lines = par.split('\n');
+      if(lines.every(l => /^\s*([-*]|\d+[.)])\s+/.test(l))){
+        const tag = /^\s*\d/.test(lines[0]) ? 'ol' : 'ul';
+        return '<' + tag + '>' + lines.map(l => '<li>' + inl(l.replace(/^\s*([-*]|\d+[.)])\s+/, '')) + '</li>').join('') + '</' + tag + '>';
+      }
+      return '<p>' + lines.map(l => inl(l.replace(/^#+\s*/, ''))).join('<br>') + '</p>';
+    }).join('');
+  }).join('');
+}
+function aiHide(forget){
+  aiOn = false; $('ai').classList.remove('on');
+  if(forget){ if(aiCtl) aiCtl.abort(); aiMsgs = []; }
+}
+async function aiModels(){
+  if(!S.ai.key) return;
+  try{
+    const r = await fetch(AI_URL + 'models', { headers:{ Authorization:'Bearer ' + S.ai.key } });
+    if(!r.ok){ showMsg($('aiModelSub'), r.status === 401 ? 'that key was refused' : 'could not list models', true); return; }
+    const ids = ((await r.json()).data || []).filter(m => m.active !== false && !/whisper|tts|guard|playai/i.test(m.id)).map(m => m.id).sort();
+    $('aiModels').innerHTML = ids.map(id => '<option value="' + aiEsc(id) + '">').join('');
+    showMsg($('aiModelSub'), ids.length + ' models on your key', false);
+    aiModelsDone = true;
+  }catch(err){ showMsg($('aiModelSub'), 'could not reach groq', true); }
+}
+async function askGroq(q){
+  if(!q){ notice('ask \u00b7 type a question after ?'); return; }
+  if(!S.ai.key){ notice('add a groq key in settings'); flyText(openSheet); return; }
+  if(aiCtl) aiCtl.abort();
+  pushHist('? ' + q);
+  setValue('', 'none'); sfx('enter'); buzz(12); RIP(caretVX, 5, .3);
+  aiMsgs.push({ role:'user', content:q });
+  if(aiMsgs.length > 12) aiMsgs = aiMsgs.slice(-12);
+  const log = $('aiLog');
+  log.innerHTML = '<div class="ai-q">' + aiEsc(q) + '</div><div class="ai-a wait"></div>';
+  const out = log.lastChild;
+  $('aiModel').textContent = S.ai.model;
+  aiOn = true; $('ai').classList.add('on'); $('ai').scrollTop = 0;
+  const ctl = aiCtl = new AbortController();
+  let text = '';
+  try{
+    const r = await fetch(AI_URL + 'chat/completions', {
+      method:'POST', signal:ctl.signal,
+      headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + S.ai.key },
+      body:JSON.stringify({ model:S.ai.model, stream:true, temperature:.5, max_tokens:1024, messages:[
+        { role:'system', content:'You answer questions typed into a minimal browser start page. Be brief and direct: a sentence or a short paragraph unless more is truly needed. Plain markdown only. Today is ' + new Date().toDateString() + '.' },
+        ...aiMsgs ] })
+    });
+    if(!r.ok){
+      let m = ''; try{ m = (await r.json()).error.message; }catch(e){}
+      throw new Error(r.status === 401 ? 'groq refused the key \u00b7 check settings' : r.status === 429 ? 'rate limited \u00b7 try again in a moment' : (m || 'groq error ' + r.status).toLowerCase());
+    }
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for(;;){
+      const { done, value } = await rd.read();
+      if(done) break;
+      buf += dec.decode(value, { stream:true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for(const l of lines){
+        if(!l.startsWith('data: ') || l === 'data: [DONE]') continue;
+        try{ text += JSON.parse(l.slice(6)).choices[0].delta.content || ''; }catch(e){}
+      }
+      out.innerHTML = aiMd(text);
+    }
+    out.classList.remove('wait');
+    aiMsgs.push({ role:'assistant', content:text });
+  }catch(err){
+    if(err.name === 'AbortError') return;
+    aiMsgs.pop();
+    out.classList.remove('wait'); out.classList.add('err');
+    out.textContent = /fetch/i.test(err.message) ? 'could not reach groq' : err.message;
+  }finally{ if(aiCtl === ctl) aiCtl = null; }
+}
+
 /* ================= notices & form messages ================= */
 function notice(msg){
   noticeEl.textContent = msg;
@@ -3630,7 +3770,7 @@ function resetFlow(){
   return 'keep';
 }
 function copySettings(){
-  const c = clone(S); if(c.ticker) c.ticker.key = c.ticker.key ? '(hidden)' : '';
+  const c = clone(S); if(c.ticker) c.ticker.key = c.ticker.key ? '(hidden)' : ''; if(c.ai) c.ai.key = c.ai.key ? '(hidden)' : '';
   copyText(JSON.stringify(c, null, 2));
   notice('settings copied as json');
 }
@@ -3644,6 +3784,7 @@ function setZen(on){
 const panelCmd = id => function(){ flyText(() => openPanel(id, true)); };
 const COMMANDS = [
   { t:'settings',        d:'open the settings sheet',     run(){ flyText(openSheet); } },
+  { t:'ask',             d:'/ask anything, or start with ?', run(){ setValue('? ', 'type'); return 'keep'; } },
   { t:'zen',             d:'only the line, nothing else', run(){ setZen(!S.zen); } },
   { t:'calendar',        d:'this month, and the next',    run:panelCmd('cal'), a:['cal'] },
   { t:'timer',           d:'/timer 5m starts one',        run:panelCmd('timer') },
@@ -3684,6 +3825,7 @@ function runCommand(raw){
   }
   if(cmd === 'countdown' && arg){ notice('add countdowns from the panel'); flyText(() => openPanel('days', true)); return; }
   if(cmd === 'reset'){ resetFlow(); return; }
+  if(cmd === 'ask'){ askGroq(raw.replace(/^\/ask\s*/i, '').trim()); return; }
   notice('unknown command \u00b7 try /settings');
 }
 function resetAll(){
@@ -3770,6 +3912,7 @@ function setClipVars(){
   sheet.style.setProperty('--cyB', (vh - lineYV) + 'px');
 }
 function openSheet(){
+  if(S.ai.key && !aiModelsDone) aiModels();
   if(settingsOpen) return;
   settingsOpen = true;
   closePanel(false);
@@ -3849,6 +3992,7 @@ function addSnip(){
 }
 function buildSheetUI(){
   syncSheet(); syncSwatches(); buildEngines(); buildLinksUI(); buildZonesUI(); buildSnipsUI();
+  $('aiKey').value = S.ai.key; $('aiModelIn').value = S.ai.model;
   $('tkCoins').value = S.ticker.coins; $('tkStocks').value = S.ticker.stocks; $('tkKey').value = S.ticker.key;
   renderWeather(); updateDrift();
   $('pkHex').value = S.accentHex.toLowerCase();
@@ -3985,6 +4129,10 @@ function bindSheet(){
   [['tkCoins', 'coins'], ['tkStocks', 'stocks'], ['tkKey', 'key']].forEach(([id, k]) => $(id).addEventListener('change', () => {
     S.ticker[k] = $(id).value.trim(); save(); fetchTicker(true);
   }));
+  $('aiKey').addEventListener('change', () => { S.ai.key = $('aiKey').value.trim(); save(); aiModels(); });
+  $('aiModelIn').addEventListener('change', () => { S.ai.model = $('aiModelIn').value.trim() || DEFAULTS.ai.model; $('aiModelIn').value = S.ai.model; save(); });
+  $('aiClose').addEventListener('click', () => { aiHide(true); input.focus(); });
+  $('aiCopy').addEventListener('click', () => { const m = aiMsgs[aiMsgs.length - 1]; if(m && m.role === 'assistant'){ copyText(m.content); notice('copied'); } });
   $('topsForget').addEventListener('click', e => {
     LS.del('sp.visits'); widgetsDirty = true;
     e.currentTarget.textContent = 'forgotten'; setTimeout(() => $('topsForget').textContent = 'forget', 1600);
@@ -4077,7 +4225,7 @@ function buildURL(v){
 function ctrlEnter(){
   const v = input.value.trim();
   if(!v) return;
-  if(v[0] === '/' || calcRes !== null){ enter(); return; }
+  if(v[0] === '/' || v[0] === '?' || calcRes !== null){ enter(); return; }
   const u = buildURL(v);
   if(u) recordVisit(u); else pushHist(v);
   const url = u || engineURL(activeEngine(), v);
@@ -4096,6 +4244,7 @@ function enter(){
     ph.classList.remove('nudge'); void ph.offsetWidth; ph.classList.add('nudge');
     return;
   }
+  if(v[0] === '?'){ askGroq(v.slice(1).trim()); return; }
   if(v[0] === '/'){
     const selCmd = palList[palIdx] || palList[0];
     sfx('key');
@@ -4204,6 +4353,7 @@ function bindEvents(){
     if(mod && !e.altKey && (e.key === 'y' || e.key === 'Y') && !isMac){ e.preventDefault(); redo(); return; }
     if(e.key === 'Escape'){
       if(panelId){ closePanel(false); return; }
+      if(aiOn && !input.value){ aiHide(true); return; }
       if(input.value){ setValue('', 'none'); hIdx = -1; RIP(caretVX, 3.5, .26); }
       else input.blur();
       return;
